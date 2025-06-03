@@ -8,30 +8,69 @@ class UserListScreen extends StatefulWidget {
 }
 
 class _UserListScreenState extends State<UserListScreen> {
-  late Future<List<dynamic>> userList;
+  List<dynamic> users = [];
+  List<dynamic> filteredUsers = [];
+  TextEditingController searchController = TextEditingController();
+  int start = 0;
+  final int limit = 10;
+  bool isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    userList = ApiService.fetchUsers();
+    fetchUsers();
+    searchController.addListener(() {
+      filterUsers();
+    });
+  }
+
+  Future<void> fetchUsers() async {
+    setState(() => isLoading = true);
+
+    try {
+      var newUsers = await ApiService.fetchUsers(start, limit);
+      setState(() {
+        users.addAll(newUsers);
+        filteredUsers = users;
+        start += limit;
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error fetching users")),
+      );
+    }
+
+    setState(() => isLoading = false);
+  }
+
+  void filterUsers() {
+    setState(() {
+      filteredUsers = users
+          .where((user) => user["name"]
+              .toLowerCase()
+              .contains(searchController.text.toLowerCase()))
+          .toList();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text("Users")),
-      body: FutureBuilder<List<dynamic>>(
-        future: userList,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return Center(child: CircularProgressIndicator());
-          } else if (snapshot.hasError) {
-            return Center(child: Text("Error loading users"));
-          } else {
-            return ListView.builder(
-              itemCount: snapshot.data!.length,
+      body: Column(
+        children: [
+          Padding(
+            padding: EdgeInsets.all(8),
+            child: TextField(
+              controller: searchController,
+              decoration: InputDecoration(labelText: "Search Users"),
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: filteredUsers.length,
               itemBuilder: (context, index) {
-                var user = snapshot.data![index];
+                var user = filteredUsers[index];
                 return ListTile(
                   title: Text(user["name"]),
                   subtitle: Text(user["email"]),
@@ -43,9 +82,14 @@ class _UserListScreenState extends State<UserListScreen> {
                   ),
                 );
               },
-            );
-          }
-        },
+            ),
+          ),
+          if (isLoading) Center(child: CircularProgressIndicator()),
+          ElevatedButton(
+            onPressed: fetchUsers,
+            child: Text("Load More"),
+          ),
+        ],
       ),
     );
   }
